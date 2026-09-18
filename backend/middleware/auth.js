@@ -16,7 +16,7 @@ module.exports = async (req, res, next) => {
     throw new AppError(401, 'Invalid or expired token', 'TOKEN_INVALID');
   }
 
-  const user = await User.findById(decoded.id).select('username email accountNumber isActive tokenVersion').lean();
+  const user = await User.findById(decoded.id).select('username email accountNumber role isActive tokenVersion').lean();
   if (!user || !user.isActive) {
     throw new AppError(401, 'Account not found or disabled', 'TOKEN_INVALID');
   }
@@ -29,6 +29,8 @@ module.exports = async (req, res, next) => {
     username: user.username,
     email: user.email,
     accountNumber: user.accountNumber,
+    // Read from the database, not the token, so a role change applies on the very next request.
+    role: user.role || 'user',
   };
   next();
 };

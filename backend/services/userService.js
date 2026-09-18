@@ -32,8 +32,17 @@ const assertUnique = async (username, email) => {
 /**
  * Creates the user, their account and the opening-deposit ledger entry atomically,
  * so there is never a user without an account or a balance without a ledger entry.
+ *
+ * `role` and `openingBalanceCents` are for trusted callers (seed scripts, tests) only:
+ * the public signup controller never forwards them from the request body.
  */
-const createUserWithAccount = async ({ username, email, password }) => {
+const createUserWithAccount = async ({
+  username,
+  email,
+  password,
+  role = 'user',
+  openingBalanceCents = OPENING_BALANCE_CENTS,
+}) => {
   await assertUnique(username, email);
 
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -43,9 +52,9 @@ const createUserWithAccount = async ({ username, email, password }) => {
   let user;
   try {
     await session.withTransaction(async () => {
-      [user] = await User.create([{ username, email, passwordHash, accountNumber }], { session });
-      await Account.create([{ userId: user._id, accountNumber, balanceCents: OPENING_BALANCE_CENTS }], { session });
-      if (OPENING_BALANCE_CENTS > 0) {
+      [user] = await User.create([{ username, email, passwordHash, accountNumber, role }], { session });
+      await Account.create([{ userId: user._id, accountNumber, balanceCents: openingBalanceCents }], { session });
+      if (openingBalanceCents > 0) {
         await Transaction.create(
           [
             {
@@ -53,7 +62,7 @@ const createUserWithAccount = async ({ username, email, password }) => {
               kind: 'OPENING_DEPOSIT',
               senderAccountNumber: TREASURY_ACCOUNT_NUMBER,
               receiverAccountNumber: accountNumber,
-              amountCents: OPENING_BALANCE_CENTS,
+              amountCents: openingBalanceCents,
               status: 'SUCCESS',
               note: 'Welcome to IronVault — opening deposit',
             },

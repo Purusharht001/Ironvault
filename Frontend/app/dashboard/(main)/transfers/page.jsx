@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import { Snowflake } from 'lucide-react';
 import { api } from '@/lib/api';
 import { TransferForm } from '@/components/dashboard/TransferForm';
 import { Card } from '@/components/ui/card';
@@ -46,8 +47,18 @@ export default function TransfersPage() {
 
       {/* Form Card */}
       <Card className="p-6 sm:p-8 max-w-2xl">
-        {/* Refresh the balance after every attempt so it always reflects the server */}
-        <TransferForm accountNumber={account.accountNumber} balanceCents={account.balanceCents} onTransferComplete={fetchAccount}/>
+        {account.status === 'FROZEN' ? (<div className="flex items-start gap-3" role="alert">
+            <Snowflake className="h-6 w-6 shrink-0 text-blue-700" aria-hidden="true"/>
+            <div>
+              <h2 className="font-semibold text-foreground">Your account is frozen</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Account is frozen. Transactions are disabled. Please contact IronVault support
+                to have it reviewed. Your balance and history remain available.
+              </p>
+            </div>
+          </div>) : (
+        // Refresh the balance after every attempt so it always reflects the server
+        <TransferForm accountNumber={account.accountNumber} balanceCents={account.balanceCents} onTransferComplete={fetchAccount}/>)}
       </Card>
 
       {/* Info Section */}

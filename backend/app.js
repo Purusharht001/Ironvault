@@ -39,6 +39,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/account', require('./routes/accountRoutes'));
 app.use('/api/transfers', require('./routes/transferRoutes'));
 app.use('/api/transactions', require('./routes/transactionRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 app.use(notFound);
 app.use(errorHandler);

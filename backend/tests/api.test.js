@@ -11,6 +11,7 @@ const connectDB = require('../config/db');
 const app = require('../app');
 const Account = require('../models/Account');
 const Transaction = require('../models/Transaction');
+const { createUserWithAccount } = require('../services/userService');
 
 let replSet;
 
@@ -333,5 +334,130 @@ describe('account and history', () => {
     assert.equal(found.body.isSelf, false);
     assert.equal((await authed(bob.token).get('/api/account/lookup/881234567890')).status, 404);
     assert.equal((await authed(bob.token).get('/api/account/lookup/123')).status, 400);
+  });
+});
+
+describe('RBAC and account freezes', () => {
+  let admin;
+  let customer;
+  let other;
+
+  const setStatus = (token, accountNumber, body) =>
+    request(app).patch(`/api/admin/accounts/${accountNumber}/status`).set('Authorization', `Bearer ${token}`).send(body);
+
+  before(async () => {
+    await createUserWithAccount({
+      username: 'opsadmin',
+      email: 'ops@ironvault.com',
+      password: 'AdminPassword123!',
+      role: 'admin',
+      openingBalanceCents: 0,
+    });
+    const res = await request(app).post('/api/auth/signin').send({ email: 'ops@ironvault.com', password: 'AdminPassword123!' });
+    admin = { token: res.body.token, user: res.body.user };
+    customer = await signup('customer1');
+    other = await signup('customer2');
+  });
+
+  it('puts the role in the profile and the JWT, and ignores a role sent to signup', async () => {
+    assert.equal(admin.user.role, 'admin');
+    const claims = JSON.parse(Buffer.from(admin.token.split('.')[1], 'base64url').toString());
+    assert.equal(claims.role, 'admin');
+
+    const sneaky = await request(app)
+      .post('/api/auth/signup')
+      .send({ username: 'sneaky', email: 'sneaky@example.com', password: 'Password123!', role: 'admin' });
+    assert.equal(sneaky.status, 201);
+    assert.equal(sneaky.body.user.role, 'user');
+    assert.equal((await authed(sneaky.body.token).get('/api/admin/transactions')).status, 403);
+  });
+
+  it('returns 403 to non-admins and 401 to anonymous callers on admin routes', async () => {
+    const list = await authed(customer.token).get('/api/admin/transactions');
+    assert.equal(list.status, 403);
+    assert.deepEqual(list.body, {
+      success: false,
+      code: 'FORBIDDEN',
+      message: 'Access denied: insufficient permissions',
+    });
+
+    const freeze = await setStatus(customer.token, other.user.accountNumber, { status: 'FROZEN' });
+    assert.equal(freeze.status, 403);
+    assert.equal((await request(app).get('/api/admin/transactions')).status, 401);
+  });
+
+  it('lets an admin list every transaction in the bank, with filters', async () => {
+    const res = await authed(admin.token).get('/api/admin/transactions?limit=5');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.total, await Transaction.countDocuments());
+    assert.equal(res.body.transactions.length, 5);
+    assert.ok(res.body.transactions[0].sender.accountNumber);
+    assert.ok(res.body.transactions[0].receiver.accountNumber);
+
+    const scoped = await authed(admin.token).get(`/api/admin/transactions?accountNumber=${customer.user.accountNumber}`);
+    assert.equal(scoped.body.total, 1); // just the opening deposit
+    assert.equal(scoped.body.transactions[0].receiver.name, 'customer1');
+  });
+
+  it('lets an admin freeze an account, with an audit trail', async () => {
+    const res = await setStatus(admin.token, customer.user.accountNumber, { status: 'FROZEN', reason: 'KYC review' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.previousStatus, 'ACTIVE');
+    assert.equal(res.body.account.status, 'FROZEN');
+    assert.equal(res.body.account.statusReason, 'KYC review');
+    assert.equal(res.body.account.statusUpdatedBy, admin.user.id);
+
+    // The customer sees the status but not the compliance reason.
+    const own = await authed(customer.token).get('/api/account');
+    assert.equal(own.body.status, 'FROZEN');
+    assert.equal(own.body.statusReason, undefined);
+  });
+
+  it('blocks transfers from a FROZEN account without moving money', async () => {
+    const before = await balanceOf(customer.token);
+    const res = await authed(customer.token).post('/api/transfers', {
+      toAccountNumber: other.user.accountNumber,
+      amountCents: 100,
+      referenceId: newRef(),
+    });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.code, 'ACCOUNT_FROZEN');
+    assert.equal(res.body.message, 'Account is frozen. Transactions are disabled.');
+    assert.equal(res.body.transaction.status, 'FAILED');
+    assert.equal(await balanceOf(customer.token), before);
+  });
+
+  it('blocks transfers to a FROZEN account without moving money', async () => {
+    const before = await balanceOf(other.token);
+    const res = await authed(other.token).post('/api/transfers', {
+      toAccountNumber: customer.user.accountNumber,
+      amountCents: 100,
+      referenceId: newRef(),
+    });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.code, 'ACCOUNT_FROZEN');
+    assert.equal(await balanceOf(other.token), before);
+  });
+
+  it('allows transfers again after the admin unfreezes the account', async () => {
+    const res = await setStatus(admin.token, customer.user.accountNumber, { status: 'ACTIVE' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.account.statusReason, null);
+
+    const transfer = await authed(customer.token).post('/api/transfers', {
+      toAccountNumber: other.user.accountNumber,
+      amountCents: 100,
+      referenceId: newRef(),
+    });
+    assert.equal(transfer.status, 201);
+  });
+
+  it('validates status changes', async () => {
+    assert.equal((await setStatus(admin.token, customer.user.accountNumber, { status: 'CLOSED' })).status, 400);
+    assert.equal((await setStatus(admin.token, customer.user.accountNumber, {})).status, 400);
+    assert.equal((await setStatus(admin.token, '881234567890', { status: 'FROZEN' })).status, 404);
+    const self = await setStatus(admin.token, admin.user.accountNumber, { status: 'FROZEN' });
+    assert.equal(self.status, 403);
+    assert.equal(self.body.code, 'SELF_STATUS_CHANGE');
   });
 });

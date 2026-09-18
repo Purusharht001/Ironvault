@@ -17,7 +17,16 @@ const TXN_OPTIONS = { readPreference: 'primary', readConcern: { level: 'snapshot
  */
 class TransferRejected extends AppError {}
 
-const hashRequest = ({ toAccountNumber, amountCents, note }) =>
+// A compliance freeze on either party blocks the transfer. Both balance updates below also
+// filter on status 'ACTIVE', so a freeze that commits mid-transfer causes a write conflict,
+// a retry, and this check then rejects it.
+const assertNotFrozen = (account) => {
+  if (account.status === 'FROZEN') {
+    throw new TransferRejected(403, 'Account is frozen. Transactions are disabled.', 'ACCOUNT_FROZEN');
+  }
+};
+
+const hashRequest =({ toAccountNumber, amountCents, note }) =>
   crypto.createHash('sha256').update(JSON.stringify([toAccountNumber, amountCents, note || ''])).digest('hex');
 
 const replayFromRecord = (record, userId, requestHash) => {
@@ -55,11 +64,13 @@ const runTransfer = async (session, { userId, toAccountNumber, amountCents, refe
   if (sender.accountNumber === toAccountNumber) {
     throw new AppError(400, 'Cannot transfer to your own account', 'SELF_TRANSFER');
   }
+  assertNotFrozen(sender);
   if (sender.status !== 'ACTIVE') {
     throw new TransferRejected(403, `Your account is ${sender.status.toLowerCase()}`, 'ACCOUNT_NOT_ACTIVE');
   }
 
   const recipient = await Account.findOne({ accountNumber: toAccountNumber }).session(session);
+  if (recipient) assertNotFrozen(recipient);
   if (!recipient || recipient.status !== 'ACTIVE') {
     throw new TransferRejected(404, 'Recipient account number not found', 'RECIPIENT_NOT_FOUND');
   }

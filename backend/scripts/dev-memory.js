@@ -1,6 +1,6 @@
 /**
  * Runs the API against a throwaway in-memory MongoDB replica set, pre-seeded with
- * two demo users. No MongoDB install or Atlas cluster needed. Data is lost on exit.
+ * the demo users (alice, bob and an admin). No MongoDB install or Atlas cluster needed. Data is lost on exit.
  *
  *   npm run dev:memory
  */
@@ -15,18 +15,12 @@ const start = async () => {
   const { PORT } = require('../config/env');
   const connectDB = require('../config/db');
   const app = require('../app');
-  const { createUserWithAccount } = require('../services/userService');
+  const { seedDemoUsers } = require('./demoUsers');
 
   await connectDB();
 
-  console.log('\nDemo users (password: Password123!)');
-  for (const demo of [
-    { username: 'alice', email: 'alice@example.com' },
-    { username: 'bob', email: 'bob@example.com' },
-  ]) {
-    const user = await createUserWithAccount({ ...demo, password: 'Password123!' });
-    console.log(`  ${demo.email.padEnd(20)} account ${user.accountNumber}`);
-  }
+  console.log('\nDemo users');
+  await seedDemoUsers();
 
   const server = app.listen(PORT, () => {
     console.log(`\nIronVault Server (in-memory DB) running on http://localhost:${PORT}`);

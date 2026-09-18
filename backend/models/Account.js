@@ -34,6 +34,20 @@ const accountSchema = new mongoose.Schema(
       enum: ['ACTIVE', 'FROZEN', 'CLOSED'],
       default: 'ACTIVE',
     },
+    // Audit trail for the last status change (admin freeze / unfreeze). Admin-only:
+    // not part of toPublicJSON(), so a customer is never shown the compliance reason.
+    statusUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    statusUpdatedAt: {
+      type: Date,
+    },
+    statusReason: {
+      type: String,
+      trim: true,
+      maxlength: 280,
+    },
   },
   { timestamps: true }
 );

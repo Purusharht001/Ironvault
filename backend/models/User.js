@@ -30,6 +30,11 @@ const userSchema = new mongoose.Schema(
       immutable: true,
       match: ACCOUNT_NUMBER_REGEX,
     },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -49,6 +54,7 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     username: this.username,
     email: this.email,
     accountNumber: this.accountNumber,
+    role: this.role,
     createdAt: this.createdAt,
   };
 };

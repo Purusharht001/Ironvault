@@ -36,6 +36,12 @@ Network dropouts or double-clicks can send the same transfer twice.
 * JWTs carry a token version. "Logout all devices" and password changes bump it, revoking every other session immediately.
 * Helmet security headers, CORS allow-list, request size limits, and rate limits on auth and transfer endpoints.
 
+### 6. Role-Based Access Control
+* Two roles: `user` (customer) and `admin` (bank operations / compliance). The role is in the user profile and the JWT, but authorization always uses the role stored in the database, so a role change takes effect on the next request.
+* `requireRole(...roles)` middleware guards `/api/admin/*` and answers `403 Access denied: insufficient permissions` otherwise. Public signup can never create an admin.
+* Admins can freeze and unfreeze accounts. A freeze on **either** party blocks a transfer (`403 ACCOUNT_FROZEN`) and the attempt is recorded as a `FAILED` ledger entry. Freezes write-conflict with in-flight transfers, so a transfer commits entirely before a freeze or is rejected after it.
+* Each status change records who made it, when, and an optional reason. The reason is visible to admins only.
+
 ---
 
 ## Tech Stack
@@ -72,11 +78,11 @@ fintech-web-app/
 │   ├── server.js              # Entry point: connect DB, listen, graceful shutdown
 │   ├── config/                # env loading, MongoDB connection
 │   ├── models/                # User, Account, Transaction, IdempotencyKey
-│   ├── middleware/            # auth, validation, rate limits, error handling
+│   ├── middleware/            # auth, rbac (requireRole), validation, rate limits, errors
 │   ├── services/              # transferService (ACID + idempotency), userService, serializers
-│   ├── controllers/           # auth, account, transfer, transaction handlers
+│   ├── controllers/           # auth, account, transfer, transaction, admin handlers
 │   ├── routes/                # Route definitions + request validation
-│   ├── scripts/               # seed.js, dev-memory.js
+│   ├── scripts/               # seed.js, dev-memory.js, demoUsers.js
 │   └── tests/                 # API integration tests
 │
 └── README.md
@@ -97,7 +103,7 @@ cd backend
 npm install
 cp .env.example .env   # then fill in MONGO_URI and JWT_SECRET
 npm run dev            # http://localhost:5000
-npm run seed           # optional: creates alice@example.com and bob@example.com
+npm run seed           # optional: creates the demo users below
 ```
 
 **No database? Use the in-memory mode:**
@@ -106,7 +112,17 @@ npm run seed           # optional: creates alice@example.com and bob@example.com
 npm run dev:memory
 ```
 
-This starts a throwaway MongoDB replica set in memory, creates `alice@example.com` and `bob@example.com` (password `Password123!`), and serves the API on port 5000. Data is lost when you stop it. The first run downloads a MongoDB binary (~1 minute).
+This starts a throwaway MongoDB replica set in memory, creates the demo users below, and serves the API on port 5000. Data is lost when you stop it. The first run downloads a MongoDB binary (~1 minute).
+
+**Demo users** (created by `npm run seed` and `npm run dev:memory`):
+
+| Email | Password | Role |
+|---|---|---|
+| `alice@example.com` | `Password123!` | user |
+| `bob@example.com` | `Password123!` | user |
+| `admin@ironvault.com` | `AdminPassword123!` | admin (opens with a $0 balance) |
+
+> Change the admin password on any database that is not a throwaway one.
 
 ### 2. Frontend
 
@@ -124,7 +140,7 @@ cd backend
 npm test
 ```
 
-The suite covers signup/signin, session revocation, atomic transfers, idempotent replays, concurrent duplicate requests, overdraft protection under concurrency, ledger immutability, ledger balance, filtering and pagination.
+The suite covers signup/signin, session revocation, atomic transfers, idempotent replays, concurrent duplicate requests, overdraft protection under concurrency, ledger immutability, ledger balance, filtering and pagination, admin-only access (403 for customers), and freeze enforcement on both sides of a transfer.
 
 ### Environment variables (`backend/.env`)
 
@@ -168,4 +184,10 @@ All endpoints except signup/signin require `Authorization: Bearer <token>`. Erro
 | `GET` | `/api/transactions` | Paginated history. Filters: `status`, `type` (`SEND`/`RECEIVE`), `rangeType` (`week`/`month`/`all`), `search`, `page`, `limit` |
 | `GET` | `/api/transactions/:id` | A single transaction (only if you are a party to it) |
 
-Transfer status codes: `201` success · `400` validation / self-transfer · `404` unknown recipient · `409` reference ID used by someone else · `422` insufficient funds or key reused with different parameters.
+### Admin (role `admin` only; everyone else gets `403`)
+| Method | Endpoint | Description |
+|---|---|---|
+| `PATCH` | `/api/admin/accounts/:accountNumber/status` | Freeze or unfreeze an account (`status`: `ACTIVE` | `FROZEN`, optional `reason`) |
+| `GET` | `/api/admin/transactions` | Every ledger entry in the bank, paginated. Filters: `accountNumber` (either party), `status`, `rangeType`, `search`, `page`, `limit` |
+
+Transfer status codes: `201` success · `400` validation / self-transfer · `403` either account frozen · `404` unknown recipient · `409` reference ID used by someone else · `422` insufficient funds or key reused with different parameters.

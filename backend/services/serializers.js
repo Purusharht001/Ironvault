@@ -45,4 +45,23 @@ const serializeTransactions = async (txns, viewerAccountNumber) => {
   return txns.map((t) => serializeTransaction(t, viewerAccountNumber, names));
 };
 
-module.exports = { resolveAccountNames, serializeTransaction, serializeTransactions };
+/**
+ * Viewer-neutral shape for the admin audit log: both parties, no SEND/RECEIVE direction.
+ */
+const serializeLedgerEntries = async (txns) => {
+  const names = await resolveAccountNames(txns.flatMap((t) => [t.senderAccountNumber, t.receiverAccountNumber]));
+  return txns.map((txn) => ({
+    id: txn._id.toString(),
+    referenceId: txn.referenceId,
+    kind: txn.kind || 'TRANSFER',
+    sender: { accountNumber: txn.senderAccountNumber, name: names.get(txn.senderAccountNumber) || null },
+    receiver: { accountNumber: txn.receiverAccountNumber, name: names.get(txn.receiverAccountNumber) || null },
+    amountCents: txn.amountCents,
+    status: txn.status,
+    failureReason: txn.failureReason || null,
+    note: txn.note || null,
+    createdAt: txn.createdAt,
+  }));
+};
+
+module.exports = { resolveAccountNames, serializeTransaction, serializeTransactions, serializeLedgerEntries };
