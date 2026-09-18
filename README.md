@@ -144,7 +144,3 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 * `GET /api/transactions/:id` — Retrieve details for a specific transaction.
 
 ---
-
-## License
-
-MIT
