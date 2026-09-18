@@ -1,31 +1,38 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { TransferForm } from '@/components/dashboard/TransferForm';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 export default function TransfersPage() {
-    const { user } = useAuth();
     const [account, setAccount] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
-    useEffect(() => {
-        const fetchAccount = async () => {
-            try {
-                const accountData = await api.account.getAccount();
-                setAccount(accountData);
-            }
-            catch (error) {
-                console.error('Failed to fetch account:', error);
-            }
-            finally {
-                setIsLoading(false);
-            }
-        };
-        fetchAccount();
+    const [error, setError] = useState(null);
+    const fetchAccount = useCallback(async () => {
+        try {
+            setError(null);
+            const accountData = await api.account.getAccount();
+            setAccount(accountData);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load account');
+        }
+        finally {
+            setIsLoading(false);
+        }
     }, []);
-    if (isLoading || !account) {
+    useEffect(() => {
+        fetchAccount();
+    }, [fetchAccount]);
+    if (isLoading) {
         return (<div className="flex items-center justify-center min-h-96">
         <p className="text-muted-foreground">Loading...</p>
+      </div>);
+    }
+    if (!account) {
+        return (<div className="flex flex-col items-center justify-center min-h-96 gap-4 text-center">
+        <p className="text-muted-foreground">{error || 'Account not available'}</p>
+        <Button onClick={() => { setIsLoading(true); fetchAccount(); }}>Try Again</Button>
       </div>);
     }
     return (<div className="space-y-8">
@@ -38,12 +45,13 @@ export default function TransfersPage() {
       </div>
 
       {/* Form Card */}
-      <Card className="p-8 max-w-2xl">
-        <TransferForm accountNumber={account.accountNumber} balanceCents={account.balanceCents}/>
+      <Card className="p-6 sm:p-8 max-w-2xl">
+        {/* Refresh the balance after every attempt so it always reflects the server */}
+        <TransferForm accountNumber={account.accountNumber} balanceCents={account.balanceCents} onTransferComplete={fetchAccount}/>
       </Card>
 
       {/* Info Section */}
-      <Card className="p-6 bg-blue-50/50 border-blue-200/50">
+      <Card className="p-6 bg-blue-50/50 border-blue-200/50 max-w-2xl">
         <h3 className="font-semibold text-foreground mb-3">
           About Secure Transfers
         </h3>
@@ -53,16 +61,16 @@ export default function TransfersPage() {
             processed exactly once, preventing duplicates even if requests retry
           </li>
           <li>
-            ✓ <strong>ACID Compliance:</strong> All transactions are atomic,
-            consistent, isolated, and durable
+            ✓ <strong>ACID Compliance:</strong> The debit, the credit and the ledger
+            entry are committed together in one database transaction, or not at all
+          </li>
+          <li>
+            ✓ <strong>Integer Cents:</strong> Amounts travel and are stored as whole
+            cents, so there are no floating-point rounding errors
           </li>
           <li>
             ✓ <strong>Immutable History:</strong> Once processed, transactions
             cannot be modified or reversed
-          </li>
-          <li>
-            ✓ <strong>Real-time Updates:</strong> Balance and transaction status
-            reflect actual bank state
           </li>
         </ul>
       </Card>

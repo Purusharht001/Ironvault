@@ -60,6 +60,10 @@ export function AuthForm({ type }) {
                 setError(`Username must be between ${VALIDATION.MIN_USERNAME_LENGTH} and ${VALIDATION.MAX_USERNAME_LENGTH} characters`);
                 return false;
             }
+            if (!/^[A-Za-z0-9_.-]+$/.test(formData.username.trim())) {
+                setError('Username may only contain letters, numbers, dots, dashes and underscores');
+                return false;
+            }
             if (!formData.email || !formData.email.includes('@')) {
                 setError('Please enter a valid email');
                 return false;
@@ -85,12 +89,12 @@ export function AuthForm({ type }) {
         }
         try {
             if (type === 'signin') {
-                await signIn(formData.email, formData.password);
+                await signIn(formData.email.trim(), formData.password);
                 toast.success('Signed in successfully');
                 router.push('/dashboard');
             }
             else {
-                await signUp(formData.username, formData.email, formData.password);
+                await signUp(formData.username.trim(), formData.email.trim(), formData.password);
                 toast.success('Account created successfully');
                 router.push('/dashboard');
             }

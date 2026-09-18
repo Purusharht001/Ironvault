@@ -1,41 +1,39 @@
 'use client';
+import { ArrowDownLeft, ArrowUpRight, Repeat } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { FORMATS } from '@/lib/constants';
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatCents } from '@/lib/utils';
 export function StatsSection({ totalSentCents, totalReceivedCents, transferCount, isLoading = false, }) {
-    const totalSent = (totalSentCents / FORMATS.CENT_DIVISOR).toFixed(FORMATS.DECIMAL_PLACES);
-    const totalReceived = (totalReceivedCents / FORMATS.CENT_DIVISOR).toFixed(FORMATS.DECIMAL_PLACES);
     const stats = [
         {
             label: 'Sent This Month',
-            value: `${FORMATS.CURRENCY_SYMBOL}${totalSent}`,
-            icon: '📤',
-            color: 'from-orange-50 to-orange-100/50',
+            value: formatCents(totalSentCents),
+            Icon: ArrowUpRight,
+            iconClass: 'bg-orange-100 text-orange-700',
         },
         {
             label: 'Received This Month',
-            value: `${FORMATS.CURRENCY_SYMBOL}${totalReceived}`,
-            icon: '📥',
-            color: 'from-green-50 to-green-100/50',
+            value: formatCents(totalReceivedCents),
+            Icon: ArrowDownLeft,
+            iconClass: 'bg-green-100 text-green-700',
         },
         {
-            label: 'Successful Transfers',
-            value: transferCount.toString(),
-            icon: '✅',
-            color: 'from-blue-50 to-blue-100/50',
+            label: 'Transfers This Month',
+            value: String(transferCount ?? 0),
+            Icon: Repeat,
+            iconClass: 'bg-blue-100 text-blue-700',
         },
     ];
     return (<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {stats.map((stat) => (<Card key={stat.label} className={`p-6 bg-gradient-to-br ${stat.color} border-border/50`}>
+      {stats.map(({ label, value, Icon, iconClass }) => (<Card key={label} className="p-6">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">
-                {stat.label}
-              </p>
-              <p className="text-3xl font-bold text-foreground">
-                {stat.value}
-              </p>
+              <p className="text-sm text-muted-foreground mb-2">{label}</p>
+              {isLoading ? (<Skeleton className="h-9 w-32"/>) : (<p className="text-3xl font-bold text-foreground tabular-nums">{value}</p>)}
             </div>
-            <span className="text-3xl">{stat.icon}</span>
+            <span className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${iconClass}`}>
+              <Icon className="h-5 w-5" aria-hidden="true"/>
+            </span>
           </div>
         </Card>))}
     </div>);

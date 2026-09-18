@@ -1,5 +1,6 @@
 'use client';
 import { Card } from '@/components/ui/card';
+import { formatAccountNumber } from '@/lib/utils';
 export function ProfileSection({ user, account }) {
     if (!user || !account) {
         return (<Card className="p-6">
@@ -28,7 +29,7 @@ export function ProfileSection({ user, account }) {
         <div>
           <p className="text-sm text-muted-foreground mb-2">Account Number</p>
           <code className="block bg-muted px-4 py-3 rounded font-mono text-lg font-semibold text-foreground">
-            {account.accountNumber}
+            {formatAccountNumber(account.accountNumber)}
           </code>
         </div>
 

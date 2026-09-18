@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { UI } from '@/lib/constants';
+import { useDebounce } from '@/hooks/useDebounce';
 import { TransactionFilters } from '@/components/dashboard/TransactionFilters';
 import { TransactionTable } from '@/components/dashboard/TransactionTable';
 import { Card } from '@/components/ui/card';
@@ -12,13 +14,20 @@ export default function TransactionsPage() {
     // Filters
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState('');
     const [rangeFilter, setRangeFilter] = useState('all');
+    const debouncedSearch = useDebounce(searchQuery.trim(), UI.SEARCH_DEBOUNCE_MS);
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(25);
+    const [pageSize, setPageSize] = useState(UI.DEFAULT_PAGE_SIZE);
     const [total, setTotal] = useState(0);
+    // Any filter change starts over at page 1
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [debouncedSearch, statusFilter, typeFilter, rangeFilter]);
     // Fetch transactions
     useEffect(() => {
+        let cancelled = false; // ignore responses that arrive after newer filters were applied
         const fetchTransactions = async () => {
             try {
                 setIsLoading(true);
@@ -27,23 +36,32 @@ export default function TransactionsPage() {
                     page: currentPage,
                     limit: pageSize,
                     status: statusFilter || undefined,
-                    search: searchQuery || undefined,
+                    type: typeFilter || undefined,
+                    search: debouncedSearch || undefined,
                     rangeType: rangeFilter,
                 });
+                if (cancelled)
+                    return;
                 setTransactions(response.transactions);
                 setTotal(response.total);
             }
             catch (err) {
+                if (cancelled)
+                    return;
                 const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions';
                 setError(errorMessage);
                 toast.error(errorMessage);
             }
             finally {
-                setIsLoading(false);
+                if (!cancelled)
+                    setIsLoading(false);
             }
         };
         fetchTransactions();
-    }, [currentPage, pageSize, statusFilter, searchQuery, rangeFilter]);
+        return () => {
+            cancelled = true;
+        };
+    }, [currentPage, pageSize, statusFilter, typeFilter, debouncedSearch, rangeFilter]);
     const handlePageChange = (page) => {
         setCurrentPage(page);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -66,13 +84,13 @@ export default function TransactionsPage() {
 
       {/* Filters Card */}
       <Card className="p-6">
-        <TransactionFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} rangeFilter={rangeFilter} onRangeChange={setRangeFilter}/>
+        <TransactionFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} typeFilter={typeFilter} onTypeChange={setTypeFilter} rangeFilter={rangeFilter} onRangeChange={setRangeFilter}/>
       </Card>
 
       {/* Transactions Table */}
       {error ? (<Card className="p-6 bg-destructive/10 border-destructive/20">
           <p className="text-sm text-destructive">{error}</p>
-        </Card>) : (<Card className="p-6">
+        </Card>) : (<Card className="p-4 sm:p-6">
           <TransactionTable transactions={transactions} isLoading={isLoading} currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} pageSize={pageSize} onPageSizeChange={handlePageSizeChange} total={total}/>
         </Card>)}
 
@@ -87,16 +105,16 @@ export default function TransactionsPage() {
             recorded and cannot be modified after creation
           </li>
           <li>
-            ✓ <strong>Complete History:</strong> Access your entire transaction
-            history with full details and timestamps
+            ✓ <strong>Complete History:</strong> Click any row to see full details,
+            including the reference ID and both account numbers
           </li>
           <li>
             ✓ <strong>Reference Tracking:</strong> Use idempotency keys (Reference
             IDs) to track and prevent duplicate transfers
           </li>
           <li>
-            ✓ <strong>Status Visibility:</strong> Monitor transaction status from
-            PENDING to SUCCESS or FAILED
+            ✓ <strong>Failed Attempts:</strong> Rejected transfers (e.g. insufficient
+            funds) are recorded as FAILED and never move money
           </li>
         </ul>
       </Card>

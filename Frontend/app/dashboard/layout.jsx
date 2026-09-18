@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Navbar } from '@/components/dashboard/Navbar';
-import { Sidebar } from '@/components/dashboard/Sidebar';
+import { MobileNav, Sidebar } from '@/components/dashboard/Sidebar';
 export default function DashboardLayout({ children, }) {
     const { isAuthenticated, isLoading } = useAuth();
     const router = useRouter();
@@ -31,9 +31,12 @@ export default function DashboardLayout({ children, }) {
         <Navbar />
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto p-8">
+        <main className="flex-1 overflow-auto p-4 pb-24 sm:p-6 sm:pb-24 md:p-8">
           {children}
         </main>
       </div>
+
+      {/* Bottom navigation on small screens */}
+      <MobileNav />
     </div>);
 }

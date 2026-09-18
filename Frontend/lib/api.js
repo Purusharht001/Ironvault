@@ -1,4 +1,4 @@
-import { API_ENDPOINTS, ERROR_MESSAGES, LOCAL_STORAGE_KEYS } from './constants';
+import { API_ENDPOINTS, ERROR_MESSAGES, LOCAL_STORAGE_KEYS, UNAUTHORIZED_EVENT } from './constants';
 // Helper function to get auth token
 function getAuthToken() {
     if (typeof window === 'undefined')
@@ -6,16 +6,20 @@ function getAuthToken() {
     return localStorage.getItem(LOCAL_STORAGE_KEYS.AUTH_TOKEN);
 }
 // Helper function to handle API responses
-async function handleResponse(response) {
+async function handleResponse(response, hadToken) {
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData?.message || ERROR_MESSAGES.SERVER_ERROR;
-        const error = new Error(errorMessage);
+        const error = new Error(data?.message || ERROR_MESSAGES.SERVER_ERROR);
         error.status = response.status;
-        error.code = errorData?.code;
+        error.code = data?.code;
+        error.data = data;
+        // An authenticated request was rejected: the session is gone (expired or revoked).
+        if (response.status === 401 && hadToken && typeof window !== 'undefined') {
+            window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+        }
         throw error;
     }
-    return response.json();
+    return data;
 }
 // Fetch wrapper with auth header
 async function apiRequest(url, options = {}) {
@@ -31,9 +35,11 @@ async function apiRequest(url, options = {}) {
         ...options,
         headers,
     }).catch(() => {
-        throw new Error(ERROR_MESSAGES.NETWORK_ERROR);
+        const error = new Error(ERROR_MESSAGES.NETWORK_ERROR);
+        error.isNetworkError = true;
+        throw error;
     });
-    return handleResponse(response);
+    return handleResponse(response, Boolean(token));
 }
 // ============ AUTH ENDPOINTS ============
 export const authAPI = {
@@ -52,6 +58,15 @@ export const authAPI = {
     getUser: async () => {
         return apiRequest(API_ENDPOINTS.GET_USER);
     },
+    logoutAll: async () => {
+        return apiRequest(API_ENDPOINTS.LOGOUT_ALL, { method: 'POST' });
+    },
+    changePassword: async (data) => {
+        return apiRequest(API_ENDPOINTS.CHANGE_PASSWORD, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+    },
 };
 // ============ ACCOUNT ENDPOINTS ============
 export const accountAPI = {
@@ -64,6 +79,12 @@ export const accountAPI = {
     getMonthlyStats: async () => {
         return apiRequest(API_ENDPOINTS.GET_MONTHLY_STATS);
     },
+    getActivity: async (days = 30) => {
+        return apiRequest(`${API_ENDPOINTS.GET_ACTIVITY}?days=${days}`);
+    },
+    lookup: async (accountNumber) => {
+        return apiRequest(API_ENDPOINTS.LOOKUP_ACCOUNT(accountNumber));
+    },
 };
 // ============ TRANSACTION ENDPOINTS ============
 export const transactionAPI = {
@@ -75,12 +96,15 @@ export const transactionAPI = {
             queryParams.append('limit', String(params.limit));
         if (params?.status)
             queryParams.append('status', params.status);
+        if (params?.type)
+            queryParams.append('type', params.type);
         if (params?.search)
             queryParams.append('search', params.search);
         if (params?.rangeType)
             queryParams.append('rangeType', params.rangeType);
-        const url = queryParams.size > 0
-            ? `${API_ENDPOINTS.GET_TRANSACTIONS}?${queryParams}`
+        const query = queryParams.toString();
+        const url = query
+            ? `${API_ENDPOINTS.GET_TRANSACTIONS}?${query}`
             : API_ENDPOINTS.GET_TRANSACTIONS;
         return apiRequest(url);
     },

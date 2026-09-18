@@ -1,40 +1,50 @@
 # IronVault
 
-A full-stack banking web application built with Next.js, Node.js, Express, and MongoDB. It allows registered users to manage account balances, send money to other users, and view an audit trail of incoming and outgoing transactions.
+A full-stack banking web application built with Next.js, Node.js, Express, and MongoDB. Registered users get a 12-digit account with a $1,000 opening balance, can send money to other users, and see an immutable audit trail of every incoming and outgoing transfer.
 
-The project is designed with a strong focus on real-world financial data handling: preventing double-spending, maintaining ledger consistency, avoiding floating-point math issues, and deduplicating payment requests.
+The project focuses on how real financial systems handle money: no double-spending, a ledger that always balances, no floating-point rounding errors, and duplicate payment requests that are processed exactly once.
 
 ---
 
 ## Key Engineering Decisions
 
 ### 1. Integer-Based Currency Handling
-In JavaScript, floating-point math causes rounding errors (e.g., `0.1 + 0.2 = 0.30000000000000004`). In financial applications, even small rounding errors accumulate and corrupt balances.
-* All balances and transfer amounts are stored and calculated strictly in whole integer **cents** (`balanceCents`, `amountCents`).
-* Conversion to dollars/decimals occurs only at the presentation layer when displaying values in the UI.
+In JavaScript, floating-point math causes rounding errors (e.g., `0.1 + 0.2 = 0.30000000000000004`). In financial applications even small errors accumulate and corrupt balances.
+* All balances and amounts are stored and computed as whole integer **cents** (`balanceCents`, `amountCents`).
+* The API rejects anything that is not a JSON integer (`10.5`, `"100"`, negatives).
+* The frontend parses typed dollar amounts into cents with string arithmetic, never `parseFloat`. Dollars exist only at the presentation layer.
 
 ### 2. Multi-Document ACID Transactions
-Transferring funds requires two operations: decrementing the sender's balance and incrementing the receiver's balance. If either step fails, the system must revert.
-* Transfers execute inside a MongoDB transaction session (`session.startTransaction()`).
-* If a balance check fails or a network issue occurs midway, the entire transaction is rolled back (`session.abortTransaction()`), preventing loss of funds or partial debits.
+A transfer debits one account, credits another, and writes a ledger entry and an idempotency record. All four writes happen in one MongoDB transaction (`session.withTransaction()`): either all of them commit or none do.
+* The debit is a conditional update (`balanceCents >= amount` in the filter, `$inc` in the update), so two concurrent transfers can never spend the same cents.
+* Write conflicts between concurrent transfers are retried automatically (`TransientTransactionError`).
 
 ### 3. Idempotency Keys (Preventing Duplicate Transfers)
-Network dropouts or rapid double-clicks on a "Send Money" button can cause a client to submit duplicate transfer requests.
-* Every transfer payload includes a client-generated `referenceId` (idempotency key).
-* Before executing a debit, the backend verifies whether the `referenceId` has already been processed. If found, the server returns the cached response without debiting the account again.
+Network dropouts or double-clicks can send the same transfer twice.
+* Every transfer carries a client-generated `referenceId` (idempotency key).
+* The server stores each key with the response it produced. Repeating the request replays the stored response (header `Idempotent-Replayed: true`) without moving money again, even when the duplicates arrive concurrently.
+* Reusing a key with *different* parameters is rejected (`422 IDEMPOTENCY_KEY_REUSED`). A key belonging to another user is rejected (`409`) without revealing their data.
+* The UI keeps the same key after a network error or 5xx, so pressing "Retry" is always safe, and generates a fresh key after a definitive answer.
 
-### 4. Immutable Ledger
-* Once written, transaction records cannot be modified or deleted.
-* Every transfer creates a persistent ledger record containing sender, receiver, amount in cents, status, and timestamp.
+### 4. Immutable, Balanced Ledger
+* Ledger entries cannot be updated or deleted: the Mongoose model blocks every update and delete path.
+* Opening balances are recorded as deposits from the IronVault Treasury (`000000000000`), so the sum of all balances always equals the sum of all deposits.
+* Business-rule rejections (insufficient funds, unknown recipient) are recorded as `FAILED` entries, visible to the sender only, and never move money.
+
+### 5. Session Security
+* Passwords are hashed with bcrypt (12 rounds). Sign-in compares against a dummy hash for unknown emails, so response timing doesn't reveal which emails are registered.
+* JWTs carry a token version. "Logout all devices" and password changes bump it, revoking every other session immediately.
+* Helmet security headers, CORS allow-list, request size limits, and rate limits on auth and transfer endpoints.
 
 ---
 
 ## Tech Stack
 
-* **Frontend:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Radix UI, Lucide Icons, Sonner (toasts)
-* **Backend:** Node.js, Express.js (v5), Mongoose ODM
-* **Database:** MongoDB (Replica Set required for multi-document transaction sessions)
-* **Authentication:** JWT (JSON Web Tokens) with passwords hashed via bcrypt
+* **Frontend:** Next.js 16 (App Router), React 19, JavaScript (JSX), Tailwind CSS, Radix UI, Recharts, Lucide Icons, Sonner (toasts)
+* **Backend:** Node.js, Express 5, Mongoose 9, express-validator, Helmet, express-rate-limit
+* **Database:** MongoDB (replica set required for multi-document transactions; Atlas works out of the box)
+* **Authentication:** JWT with bcrypt-hashed passwords
+* **Tests:** Node's built-in test runner, Supertest, and an in-memory MongoDB replica set
 
 ---
 
@@ -45,27 +55,29 @@ fintech-web-app/
 ├── Frontend/
 │   ├── app/
 │   │   ├── auth/              # Sign-in & sign-up routes
-│   │   ├── dashboard/         # Dashboard layouts, overview, transfers, ledger, settings
+│   │   ├── dashboard/         # Overview, transfers, ledger, settings
 │   │   └── page.jsx           # Entry redirect logic
 │   ├── components/
-│   │   ├── dashboard/         # BalanceCard, StatsSection, TransferForm, TransactionTable
-│   │   └── ui/                # Reusable UI primitives (buttons, inputs, cards)
-│   ├── context/
-│   │   └── AuthContext.jsx    # Client-side session and auth state
-│   ├── lib/
-│   │   ├── api.js             # Typed API client
-│   │   ├── constants.js       # Route endpoints and validation limits
-│   │   └── types.js           # Shared models & constants
-│   └── package.json
+│   │   ├── dashboard/         # BalanceCard, ActivityChart, TransferForm, TransactionTable, ...
+│   │   └── ui/                # Reusable UI primitives (buttons, inputs, dialogs)
+│   ├── context/AuthContext.jsx  # Session state, auto sign-out on revoked tokens
+│   ├── hooks/                   # useAuth, useDebounce
+│   └── lib/
+│       ├── api.js             # API client
+│       ├── constants.js       # Endpoints, validation limits
+│       └── utils.js           # Cents formatting/parsing, idempotency keys
 │
 ├── backend/
-│   ├── config/
-│   │   └── db.js              # MongoDB connection
-│   ├── controllers/           # Route logic (Auth, Account, Transfers)
-│   ├── models/                # User, Account, Transaction, IdempotencyKey schemas
-│   ├── server.js              # Server entry point
-│   ├── .env.example           # Backend environment template
-│   └── package.json
+│   ├── app.js                 # Express app (middleware + routes)
+│   ├── server.js              # Entry point: connect DB, listen, graceful shutdown
+│   ├── config/                # env loading, MongoDB connection
+│   ├── models/                # User, Account, Transaction, IdempotencyKey
+│   ├── middleware/            # auth, validation, rate limits, error handling
+│   ├── services/              # transferService (ACID + idempotency), userService, serializers
+│   ├── controllers/           # auth, account, transfer, transaction handlers
+│   ├── routes/                # Route definitions + request validation
+│   ├── scripts/               # seed.js, dev-memory.js
+│   └── tests/                 # API integration tests
 │
 └── README.md
 ```
@@ -75,71 +87,85 @@ fintech-web-app/
 ## Getting Started
 
 ### Prerequisites
-* Node.js (v18.x or later)
-* npm or pnpm
-* MongoDB Atlas account or local MongoDB instance configured with a replica set (needed for transactions)
+* Node.js 18.18 or later
+* A MongoDB **replica set**: a free MongoDB Atlas cluster, or none at all if you use the in-memory mode below
 
-### 1. Backend Setup
+### 1. Backend
 
 ```bash
 cd backend
 npm install
+cp .env.example .env   # then fill in MONGO_URI and JWT_SECRET
+npm run dev            # http://localhost:5000
+npm run seed           # optional: creates alice@example.com and bob@example.com
 ```
 
-Create a `.env` file in the `backend/` directory based on `.env.example`:
-
-```ini
-PORT=5000
-MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret_key
-```
-
-Start the backend development server:
+**No database? Use the in-memory mode:**
 
 ```bash
-npm run dev
+npm run dev:memory
 ```
 
-The API will run on `http://localhost:5000`.
+This starts a throwaway MongoDB replica set in memory, creates `alice@example.com` and `bob@example.com` (password `Password123!`), and serves the API on port 5000. Data is lost when you stop it. The first run downloads a MongoDB binary (~1 minute).
 
-### 2. Frontend Setup
+### 2. Frontend
 
 ```bash
-cd ../Frontend
+cd Frontend
 npm install
+cp .env.example .env.local   # optional, defaults to http://localhost:5000/api
+npm run dev                  # http://localhost:3000
 ```
 
-Create a `.env.local` file in the `Frontend/` directory:
-
-```ini
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5000/api
-```
-
-Start the Next.js development server:
+### 3. Tests
 
 ```bash
-npm run dev
+cd backend
+npm test
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+The suite covers signup/signin, session revocation, atomic transfers, idempotent replays, concurrent duplicate requests, overdraft protection under concurrency, ledger immutability, ledger balance, filtering and pagination.
+
+### Environment variables (`backend/.env`)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MONGO_URI` | *(required)* | MongoDB connection string (must be a replica set) |
+| `JWT_SECRET` | dev-only fallback | Token signing secret. **Required in production** |
+| `JWT_EXPIRES_IN` | `7d` | Token lifetime |
+| `PORT` | `5000` | API port |
+| `CLIENT_ORIGIN` | `http://localhost:3000` | Comma-separated CORS allow-list |
+| `OPENING_BALANCE_CENTS` | `100000` | Starting balance for new accounts ($1,000.00) |
 
 ---
 
 ## API Overview
 
+All endpoints except signup/signin require `Authorization: Bearer <token>`. Errors have the shape `{ success: false, code, message }`.
+
 ### Authentication
-* `POST /api/auth/signup` — Register a new user and generate a 12-digit account number.
-* `POST /api/auth/signin` — Authenticate user and return JWT token.
-* `GET /api/auth/me` — Retrieve current authenticated user profile.
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/signup` | Register (`username`, `email`, `password`) and receive a 12-digit account number |
+| `POST` | `/api/auth/signin` | Authenticate and receive a JWT |
+| `GET` | `/api/auth/me` | Current user profile |
+| `POST` | `/api/auth/logout-all` | Revoke all other sessions; returns a fresh token |
+| `POST` | `/api/auth/change-password` | Change password (`currentPassword`, `newPassword`); revokes other sessions |
 
 ### Accounts & Balances
-* `GET /api/account` — Fetch account details for the authenticated user.
-* `GET /api/account/balance` — Quick balance check in cents.
-* `GET /api/account/stats` — Total sent, total received, and transfer counts.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/account` | Account details |
+| `GET` | `/api/account/balance` | Balance in cents |
+| `GET` | `/api/account/stats` | This month's total sent, total received and transfer count |
+| `GET` | `/api/account/activity?days=30` | Daily money in / out, zero-filled |
+| `GET` | `/api/account/lookup/:accountNumber` | Recipient name, to confirm before sending |
 
 ### Transfers & Ledger
-* `POST /api/transfers` — Execute an atomic transfer using an idempotency key.
-* `GET /api/transactions` — Query paginated transaction history with status and date filters.
-* `GET /api/transactions/:id` — Retrieve details for a specific transaction.
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/transfers` | Atomic, idempotent transfer (`toAccountNumber`, `amountCents`, `referenceId`, optional `note`) |
+| `GET` | `/api/transactions` | Paginated history. Filters: `status`, `type` (`SEND`/`RECEIVE`), `rangeType` (`week`/`month`/`all`), `search`, `page`, `limit` |
+| `GET` | `/api/transactions/:id` | A single transaction (only if you are a party to it) |
 
----
+Transfer status codes: `201` success · `400` validation / self-transfer · `404` unknown recipient · `409` reference ID used by someone else · `422` insufficient funds or key reused with different parameters.

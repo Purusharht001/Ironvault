@@ -2,27 +2,24 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { Toaster } from 'sonner';
-const _geist = Geist({ subsets: ['latin'] });
-const _geistMono = Geist_Mono({ subsets: ['latin'] });
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
+const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' });
 export const metadata = {
     title: 'IronVault - Secure Transaction Banking',
     description: 'IronVault: A fintech simulator focused on transaction integrity, ACID guarantees, and immutable transaction history.',
-    generator: 'v0.app',
 };
 export const viewport = {
     width: 'device-width',
     initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
     themeColor: '#1f2937',
 };
 export default function RootLayout({ children, }) {
-    return (<html lang="en">
+    return (<html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
         <AuthProvider>
           {children}
         </AuthProvider>
-        <Toaster />
+        <Toaster richColors position="top-center"/>
       </body>
     </html>);
 }
