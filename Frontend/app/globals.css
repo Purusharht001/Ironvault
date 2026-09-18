@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    /* Light mode - Clean, professional fintech aesthetic */
+    --background: 0 0% 98%; /* Off-white background */
+    --foreground: 210 11% 15%; /* Deep blue-gray text */
+    --card: 0 0% 100%; /* Pure white cards */
+    --card-foreground: 210 11% 15%; /* Deep blue-gray text */
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 11% 15%;
+    --primary: 210 100% 50%; /* Vibrant blue - primary brand */
+    --primary-foreground: 0 0% 100%; /* White text on primary */
+    --secondary: 160 84% 39%; /* Emerald accent */
+    --secondary-foreground: 0 0% 100%; /* White text */
+    --muted: 210 7% 88%; /* Light gray */
+    --muted-foreground: 210 8% 40%; /* Medium gray text */
+    --accent: 160 84% 39%; /* Emerald */
+    --accent-foreground: 0 0% 100%; /* White text */
+    --destructive: 0 84% 60%; /* Red for errors/failures */
+    --destructive-foreground: 0 0% 100%; /* White text */
+    --border: 210 6% 91%; /* Light border */
+    --input: 210 6% 93%; /* Input background */
+    --ring: 210 100% 50%; /* Focus ring blue */
+    --chart-1: 210 100% 50%; /* Blue */
+    --chart-2: 160 84% 39%; /* Emerald */
+    --chart-3: 25 95% 53%; /* Orange */
+    --chart-4: 280 85% 45%; /* Purple */
+    --chart-5: 200 100% 41%; /* Deep blue */
+    --radius: 0.5rem;
+    --sidebar-background: 210 11% 15%; /* Deep blue-gray */
+    --sidebar-foreground: 0 0% 100%; /* White text */
+    --sidebar-primary: 210 100% 50%; /* Bright blue */
+    --sidebar-primary-foreground: 0 0% 100%; /* White text */
+    --sidebar-accent: 160 84% 39%; /* Emerald hover */
+    --sidebar-accent-foreground: 0 0% 100%; /* White text */
+    --sidebar-border: 210 8% 25%; /* Dark border */
+    --sidebar-ring: 210 100% 50%; /* Blue ring */
+  }
+  .dark {
+    /* Dark mode - Maintain professional aesthetic */
+    --background: 210 11% 10%; /* Very dark blue-gray */
+    --foreground: 0 0% 95%; /* Near-white text */
+    --card: 210 11% 15%; /* Slightly lighter card */
+    --card-foreground: 0 0% 95%;
+    --popover: 210 11% 15%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 210 100% 60%; /* Brighter blue in dark */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 160 84% 45%; /* Brighter emerald */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 8% 30%; /* Dark gray */
+    --muted-foreground: 210 5% 70%; /* Light gray text */
+    --accent: 160 84% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 63%; /* Slightly brighter red */
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 8% 25%; /* Dark border */
+    --input: 210 8% 20%; /* Dark input */
+    --ring: 210 100% 60%; /* Bright blue ring */
+    --chart-1: 210 100% 60%;
+    --chart-2: 160 84% 45%;
+    --chart-3: 25 95% 60%;
+    --chart-4: 280 85% 55%;
+    --chart-5: 200 100% 50%;
+    --sidebar-background: 210 11% 12%; /* Slightly lighter */
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 210 100% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 160 84% 45%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 210 8% 22%;
+    --sidebar-ring: 210 100% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
