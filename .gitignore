@@ -31,3 +31,9 @@ Thumbs.db
 # IDE Files
 .vscode/
 .idea/
+
+# Internal docs / plans
+IMPLEMENTATION_PLAN.md
+implementation_plan.md
+*implementation_plan*
+

@@ -67,7 +67,6 @@ fintech-web-app/
 │   ├── .env.example           # Backend environment template
 │   └── package.json
 │
-├── IMPLEMENTATION_PLAN.md     # Detailed architecture and API contract specification
 └── README.md
 ```
 
