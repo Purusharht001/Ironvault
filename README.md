@@ -46,16 +46,16 @@ fintech-web-app/
 │   ├── app/
 │   │   ├── auth/              # Sign-in & sign-up routes
 │   │   ├── dashboard/         # Dashboard layouts, overview, transfers, ledger, settings
-│   │   └── page.tsx           # Entry redirect logic
+│   │   └── page.jsx           # Entry redirect logic
 │   ├── components/
 │   │   ├── dashboard/         # BalanceCard, StatsSection, TransferForm, TransactionTable
 │   │   └── ui/                # Reusable UI primitives (buttons, inputs, cards)
 │   ├── context/
-│   │   └── AuthContext.tsx    # Client-side session and auth state
+│   │   └── AuthContext.jsx    # Client-side session and auth state
 │   ├── lib/
-│   │   ├── api.ts             # Typed API client
-│   │   ├── constants.ts       # Route endpoints and validation limits
-│   │   └── types.ts           # Shared TypeScript interfaces
+│   │   ├── api.js             # Typed API client
+│   │   ├── constants.js       # Route endpoints and validation limits
+│   │   └── types.js           # Shared models & constants
 │   └── package.json
 │
 ├── backend/
